@@ -1,0 +1,80 @@
+name: Build SukiSU‑Ultra‑oneplus_turbo_6
+
+on:
+  workflow_dispatch:
+    inputs:
+      SUFFIX:
+        description: 内核版本后缀
+        required: false
+        default: -sukisu‑turbo6
+  push:
+    branches: [ SukiSU‑Ultra ]
+
+env:
+  FILE: oneplus_turbo_6
+  KSU_META: main/builtin/Numbersf/
+  FAST_BUILD: true
+  LSM_BBG: true
+  NETFILTER: true
+  CCM: true
+  SUSFS_DEV: false
+  SCHED_HMBIRD: false
+  UNICODE_BYPASS: false
+  LZ4_UPDATE: false
+
+jobs:
+  build:
+    runs‑on: ubuntu‑24.04
+    steps:
+      - name: Checkout Action‑Build
+        uses: actions/checkout@v7
+        with:
+          repository: threeran/Action‑Build
+          ref: SukiSU‑Ultra
+          fetch‑depth: 1
+
+      - name: Run build prepare
+        run: |
+          bash scripts/maximize‑build‑space.sh
+        env:
+          ROOT_RESERVE_MB: 8192
+          TEMP_RESERVE_MB: 2048
+          REMOVE_DOTNET: true
+          REMOVE_ANDROID: true
+          REMOVE_HASKELL: true
+          REMOVE_CODEQL: true
+          SWAP_SPACE_MB: 4096
+
+      - name: 【关键】7G Swap扩容 + 限制编译线程 + 修复BBG LSM配置
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 7G /mnt/swapfile
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
+
+          cd kernel_workspace/kernel_platform/common
+          sed -i 's/^CONFIG_LSM="\(.*\)"/CONFIG_LSM="\1,baseband_guard"/' arch/arm64/configs/gki_defconfig
+          echo "=== 确认CONFIG_LSM ==="
+          grep CONFIG_LSM arch/arm64/configs/gki_defconfig
+
+          echo "MAKE_JOBS=-j3" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Set env var
+        run: |
+          echo "SUFFIX=${{ github.event.inputs.SUFFIX }}" >> $GITHUB_ENV
+
+      - name: Start kernel build
+        run: |
+          bash ./build.sh ${MAKE_JOBS}
+        shell: bash
+
+      - name: Upload artifact AnyKernel
+        uses: actions/upload‑artifact@v7
+        with:
+          name: SukiSU‑Ultra‑oneplus_turbo6
+          path: |
+            kernel_workspace/out/*.zip
+          retention‑days: 14
